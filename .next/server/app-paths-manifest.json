@@ -3,5 +3,6 @@
   "/page": "app/page.js",
   "/workflows/[workflow_id]/executions/page": "app/workflows/[workflow_id]/executions/page.js",
   "/workflows/[workflow_id]/executions/[execution_id]/page": "app/workflows/[workflow_id]/executions/[execution_id]/page.js",
-  "/api/executions/[execution_id]/route": "app/api/executions/[execution_id]/route.js"
+  "/api/executions/[execution_id]/route": "app/api/executions/[execution_id]/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js"
 }
