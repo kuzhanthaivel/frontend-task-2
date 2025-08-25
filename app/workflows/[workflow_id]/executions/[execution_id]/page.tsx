@@ -13,7 +13,25 @@ import {
   FileText,
   MessageSquare,
   Slack,
+  Zap,
 } from "lucide-react";
+
+// Define types for better type safety
+interface NodeData {
+  [key: string]: any;
+  keys_to_display_frontend?: string[];
+}
+
+interface ExecutionData {
+  execution_id: string;
+  workflow_id: string;
+  workflow_name: string;
+  status: string;
+  start_time: string;
+  end_time: string;
+  trigger: string;
+  [key: string]: any;
+}
 
 export default function ExecutionDetailPage() {
   const params = useParams();
@@ -21,7 +39,7 @@ export default function ExecutionDetailPage() {
   const workflowId = params.workflow_id as string;
   const executionId = params.execution_id as string;
 
-  const [executionData, setExecutionData] = useState<any>(null);
+  const [executionData, setExecutionData] = useState<ExecutionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +98,233 @@ export default function ExecutionDetailPage() {
     }
   };
 
+  const getNodeIcon = (nodeType: string) => {
+    switch (nodeType) {
+      case "ocr_node":
+        return <FileText className="h-5 w-5 text-blue-500 mr-2" />;
+      case "llm_call":
+        return <MessageSquare className="h-5 w-5 text-purple-500 mr-2" />;
+      case "send_slack":
+        return <Slack className="h-5 w-5 text-pink-500 mr-2" />;
+      default:
+        return <Zap className="h-5 w-5 text-gray-500 mr-2" />;
+    }
+  };
+
+  const getNodeTitle = (nodeType: string) => {
+    switch (nodeType) {
+      case "ocr_node":
+        return "OCR Processing";
+      case "llm_call":
+        return "LLM Processing";
+      case "send_slack":
+        return "Slack Notification";
+      default:
+        return nodeType.split('_').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' ');
+    }
+  };
+
+  // Function to determine node priority for layout
+  const getNodePriority = (nodeType: string) => {
+    // Primary nodes get left column, secondary get right
+    const primaryNodes = ['ocr_node', 'input_node', 'primary_node'];
+    return primaryNodes.includes(nodeType) ? 'primary' : 'secondary';
+  };
+
+  // Function to render node data based on keys_to_display_frontend
+  const renderNodeData = (nodeType: string, nodeData: NodeData) => {
+    if (!nodeData) return <p className="text-sm text-gray-500">No data available</p>;
+    
+    // Use keys_to_display_frontend if provided, otherwise show all except metadata
+    const keysToDisplay = nodeData.keys_to_display_frontend || 
+      Object.keys(nodeData).filter(key => 
+        key !== 'keys_to_display_frontend' && 
+        key !== 'metadata' &&
+        nodeData[key] !== null &&
+        nodeData[key] !== undefined
+      );
+    
+    if (keysToDisplay.length === 0) {
+      return <p className="text-sm text-gray-500">No data to display</p>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {keysToDisplay.map((key) => {
+          const value = nodeData[key];
+          
+          // Skip if value is null/undefined
+          if (value === null || value === undefined) return null;
+          
+          // Special handling for error fields
+          if (key === 'error') {
+            return (
+              <div key={key} className="bg-red-50 p-4 rounded-lg border border-red-200">
+                <p className="text-sm font-medium text-red-800 mb-1">
+                  Error
+                </p>
+                <p className="text-sm text-red-700">
+                  {value}
+                </p>
+              </div>
+            );
+          }
+          
+          // Special handling for usage fields
+          if (key === 'usage' && typeof value === 'object') {
+            return (
+              <div key={key} className="space-y-3">
+                <p className="text-sm font-medium text-gray-700">Usage</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-gray-50 rounded-lg">
+                  {Object.entries(value).map(([usageKey, usageValue]) => (
+                    <div key={usageKey} className="text-center">
+                      <p className="text-xs text-gray-500 uppercase font-medium mb-1">
+                        {usageKey.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {usageValue as React.ReactNode}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          
+          // Special handling for status
+          if (key === 'status') {
+            if (value === 'running') {
+              return (
+                <div key={key} className="flex items-center justify-center py-4 bg-blue-50 rounded-lg">
+                  <div className="animate-pulse flex items-center">
+                    <div className="h-4 w-4 bg-blue-500 rounded-full mr-2"></div>
+                    <span className="text-sm text-blue-700 font-medium">
+                      Processing {nodeType.replace('_', ' ')}...
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={key}>
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </p>
+                <p className="text-sm capitalize">{value}</p>
+              </div>
+            );
+          }
+          
+          // Handle object values (excluding arrays)
+          if (typeof value === 'object' && !Array.isArray(value)) {
+            return (
+              <div key={key}>
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  {key.split('_').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                  ).join(' ')}
+                </p>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <pre className="text-sm whitespace-pre-wrap font-mono">
+                    {JSON.stringify(value, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            );
+          }
+          
+          // Handle array values
+          if (Array.isArray(value)) {
+            return (
+              <div key={key}>
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  {key.split('_').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                  ).join(' ')}
+                </p>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <ul className="text-sm list-disc list-inside space-y-1">
+                    {value.map((item, index) => (
+                      <li key={index} className="text-gray-700">
+                        {typeof item === 'object' ? JSON.stringify(item) : item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            );
+          }
+          
+          // Handle long text (like output/response/message)
+          if ((key === 'output' || key === 'response' || key === 'message') && typeof value === 'string') {
+            return (
+              <div key={key} className="space-y-2">
+                <p className="text-sm font-medium text-gray-700">
+                  {key.split('_').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                  ).join(' ')}
+                </p>
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    {value}
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          
+          // Handle numeric values with special formatting
+          if (key === 'pages_processed' || key === 'total_tokens' || key === 'prompt_tokens' || key === 'completion_tokens') {
+            return (
+              <div key={key} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+                <span className="text-sm font-medium text-gray-700">
+                  {key.split('_').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                  ).join(' ')}
+                </span>
+                <span className="text-sm font-semibold text-gray-900 bg-blue-100 px-2 py-1 rounded">
+                  {value}
+                </span>
+              </div>
+            );
+          }
+          
+          // Default rendering for simple values
+          return (
+            <div key={key} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+              <span className="text-sm font-medium text-gray-700">
+                {key.split('_').map(word => 
+                  word.charAt(0).toUpperCase() + word.slice(1)
+                ).join(' ')}
+              </span>
+              <span className="text-sm text-gray-900 max-w-xs truncate">
+                {value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Identify all nodes in the execution data
+  const getNodeTypes = () => {
+    if (!executionData) return [];
+    
+    const excludeFields = [
+      'execution_id', 'workflow_id', 'workflow_name', 
+      'status', 'start_time', 'end_time', 'trigger', 'error'
+    ];
+    
+    return Object.keys(executionData).filter(
+      key => !excludeFields.includes(key) && 
+             executionData[key] !== null && 
+             typeof executionData[key] === 'object'
+    );
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -108,64 +353,19 @@ export default function ExecutionDetailPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center">
-              <Skeleton className="h-5 w-5 rounded-full mr-2" />
-              <Skeleton className="h-5 w-32" />
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <Skeleton className="h-5 w-20 mb-2" />
-                <Skeleton className="h-20 rounded-lg" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Skeleton className="h-5 w-32 mb-2" />
-                  <Skeleton className="h-6 rounded-lg" />
-                </div>
-              </div>
-            </div>
+          <div className="space-y-6">
+            <Skeleton className="h-64 rounded-xl" />
           </div>
           <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center">
-                <Skeleton className="h-5 w-5 rounded-full mr-2" />
-                <Skeleton className="h-5 w-32" />
-              </div>
-              <div className="p-6 space-y-4">
-                <Skeleton className="h-5 w-20 mb-2" />
-                <Skeleton className="h-20 rounded-lg" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Skeleton className="h-16 rounded-lg" />
-                  <Skeleton className="h-16 rounded-lg" />
-                  <Skeleton className="h-16 rounded-lg" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center">
-                <Skeleton className="h-5 w-5 rounded-full mr-2" />
-                <Skeleton className="h-5 w-40" />
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <Skeleton className="h-5 w-20 mb-2" />
-                  <Skeleton className="h-6 rounded-lg" />
-                </div>
-                <div>
-                  <Skeleton className="h-5 w-20 mb-2" />
-                  <Skeleton className="h-16 rounded-lg" />
-                </div>
-              </div>
-            </div>
+            <Skeleton className="h-48 rounded-xl" />
+            <Skeleton className="h-48 rounded-xl" />
           </div>
         </div>
       </div>
     );
   }
 
-  if (!executionData) {
+  if (error || !executionData) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
@@ -181,10 +381,10 @@ export default function ExecutionDetailPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
           <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Execution not found
+            {error ? "Error loading execution" : "Execution not found"}
           </h3>
           <p className="text-gray-500 mb-4">
-            The execution with ID {executionId} could not be found.
+            {error || `The execution with ID ${executionId} could not be found.`}
           </p>
           <Button
             onClick={() => router.push(`/workflows/${workflowId}/executions`)}
@@ -195,6 +395,10 @@ export default function ExecutionDetailPage() {
       </div>
     );
   }
+
+  const nodeTypes = getNodeTypes();
+  const primaryNodes = nodeTypes.filter(type => getNodePriority(type) === 'primary');
+  const secondaryNodes = nodeTypes.filter(type => getNodePriority(type) === 'secondary');
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -208,6 +412,7 @@ export default function ExecutionDetailPage() {
         </button>
       </div>
 
+      {/* Execution Header */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <div className="flex items-center justify-between">
@@ -216,8 +421,7 @@ export default function ExecutionDetailPage() {
                 Execution #{executionData.execution_id}
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                Workflow: {executionData.workflow_name} (
-                {executionData.workflow_id})
+                Workflow: {executionData.workflow_name} ({executionData.workflow_id})
               </p>
             </div>
             <div
@@ -234,25 +438,15 @@ export default function ExecutionDetailPage() {
         <div className="px-6 py-4 border-b border-gray-100">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <p className="text-xs text-gray-500 uppercase font-medium">
-                Start Time
-              </p>
-              <p className="text-sm font-medium">
-                {formatDate(executionData.start_time)}
-              </p>
+              <p className="text-xs text-gray-500 uppercase font-medium">Start Time</p>
+              <p className="text-sm font-medium">{formatDate(executionData.start_time)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-medium">
-                End Time
-              </p>
-              <p className="text-sm font-medium">
-                {formatDate(executionData.end_time)}
-              </p>
+              <p className="text-xs text-gray-500 uppercase font-medium">End Time</p>
+              <p className="text-sm font-medium">{formatDate(executionData.end_time)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-medium">
-                Duration
-              </p>
+              <p className="text-xs text-gray-500 uppercase font-medium">Duration</p>
               <p className="text-sm font-medium">
                 {executionData.start_time && executionData.end_time
                   ? `${Math.round(
@@ -264,175 +458,43 @@ export default function ExecutionDetailPage() {
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-medium">
-                Trigger
-              </p>
-              <p className="text-sm font-medium capitalize">
-                {executionData.trigger}
-              </p>
+              <p className="text-xs text-gray-500 uppercase font-medium">Trigger</p>
+              <p className="text-sm font-medium capitalize">{executionData.trigger}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center">
-            <FileText className="h-5 w-5 text-blue-500 mr-2" />
-            <h3 className="font-medium">OCR Processing</h3>
-          </div>
-          <div className="p-6">
-            {executionData.ocr_node ? (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-700 mb-1">
-                    Output
-                  </p>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm">{executionData.ocr_node.output}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Pages Processed
-                    </p>
-                    <p className="text-sm">
-                      {executionData.ocr_node.pages_processed}
-                    </p>
-                  </div>
-                </div>
+      {/* Node Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Primary Nodes Column */}
+        <div className="space-y-6">
+          {primaryNodes.map((nodeType) => (
+            <div key={nodeType} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center">
+                {getNodeIcon(nodeType)}
+                <h3 className="font-medium">{getNodeTitle(nodeType)}</h3>
               </div>
-            ) : (
-              <p className="text-sm text-gray-500">No OCR data available</p>
-            )}
-          </div>
+              <div className="p-6">
+                {renderNodeData(nodeType, executionData[nodeType])}
+              </div>
+            </div>
+          ))}
         </div>
 
-        <div className="flex flex-col ">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center">
-              <MessageSquare className="h-5 w-5 text-purple-500 mr-2" />
-              <h3 className="font-medium">LLM Processing</h3>
+        {/* Secondary Nodes Column */}
+        <div className="space-y-6">
+          {secondaryNodes.map((nodeType) => (
+            <div key={nodeType} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center">
+                {getNodeIcon(nodeType)}
+                <h3 className="font-medium">{getNodeTitle(nodeType)}</h3>
+              </div>
+              <div className="p-6">
+                {renderNodeData(nodeType, executionData[nodeType])}
+              </div>
             </div>
-            <div className="p-6">
-              {executionData.llm_call ? (
-                <div className="space-y-4">
-                  {executionData.llm_call.error ? (
-                    <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                      <p className="text-sm font-medium text-red-800 mb-1">
-                        Error
-                      </p>
-                      <p className="text-sm text-red-700">
-                        {executionData.llm_call.error}
-                      </p>
-                    </div>
-                  ) : executionData.llm_call.status === "running" ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-pulse flex items-center">
-                        <div className="h-4 w-4 bg-blue-500 rounded-full mr-2"></div>
-                        <span className="text-sm text-gray-500">
-                          Processing LLM request...
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {executionData.llm_call.response && (
-                        <div>
-                          <p className="text-sm font-medium text-gray-700 mb-1">
-                            Response
-                          </p>
-                          <div className="bg-gray-50 p-4 rounded-lg">
-                            <p className="text-sm">
-                              {executionData.llm_call.response}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {executionData.llm_call.usage && (
-                        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-3 gap-4">
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">
-                              Total Tokens
-                            </p>
-                            <p className="text-sm">
-                              {executionData.llm_call.usage.total_tokens}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">
-                              Prompt Tokens
-                            </p>
-                            <p className="text-sm">
-                              {executionData.llm_call.usage.prompt_tokens}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">
-                              Completion Tokens
-                            </p>
-                            <p className="text-sm">
-                              {executionData.llm_call.usage.completion_tokens}
-                            </p>
-                          </div>
-                          {executionData.llm_call.metadata && (
-                            <div>
-                              <p className="text-sm font-medium text-gray-700 mb-1">
-                                Model
-                              </p>
-                              <p className="text-sm">
-                                {executionData.llm_call.metadata.model}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                    </>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No LLM data available</p>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center">
-              <Slack className="h-5 w-5 text-pink-500 mr-2" />
-              <h3 className="font-medium">Slack Notification</h3>
-            </div>
-            <div className="p-6">
-              {executionData.send_slack ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Channel
-                    </p>
-                    <p className="text-sm">
-                      {executionData.send_slack.channel}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Message
-                    </p>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm">
-                        {executionData.send_slack.message}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No Slack data available</p>
-              )}
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

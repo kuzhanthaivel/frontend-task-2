@@ -1,8 +1,8 @@
 {
-  "/not-found": "app/not-found.js",
-  "/page": "app/page.js",
   "/workflows/[workflow_id]/executions/page": "app/workflows/[workflow_id]/executions/page.js",
   "/workflows/[workflow_id]/executions/[execution_id]/page": "app/workflows/[workflow_id]/executions/[execution_id]/page.js",
   "/api/executions/[execution_id]/route": "app/api/executions/[execution_id]/route.js",
+  "/api/executions/route": "app/api/executions/route.js",
+  "/api/workflows/[workflow_id]/route": "app/api/workflows/[workflow_id]/route.js",
   "/favicon.ico/route": "app/favicon.ico/route.js"
 }

@@ -87,7 +87,11 @@ export const mockExecutionDetails: Record<string, WorkflowExecutionDetail> = {
     ocr_node: {
       output: "This is a sample PDF document containing information about quarterly sales reports. The document shows revenue growth of 15% compared to the previous quarter, with strong performance in the technology and healthcare sectors. Key highlights include new client acquisitions and improved customer retention rates.",
       pages_processed: 3,
-      keys_to_display_frontend: ["output"]
+      Some_Other : 6,
+      kjkk: "jkjk",
+      hi: "jkjk",
+      how: "jkjk",
+      keys_to_display_frontend: ["output", "pages_processed", "Some_Other", "kjkk"]
     },
     llm_call: {
       usage: {
